@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: django-monolith-v1
+spec:
+  replicas: 2 # High Availability
+  selector:
+    matchLabels:
+      app: django-v1
+  template:
+    metadata:
+      labels:
+        app: django-v1
+    spec:
+      serviceAccountName: django-sa # Link to the Service Account with IAM Role
+      containers:
+      - name: django-monolith
+        image: <ECR_URI_PLACEHOLDER> # CI/CD will replace this
+        ports:
+        - containerPort: 8000
+        env:
+          # Inject as environment variables from the mounted volume (best practice for simple secrets)
+          - name: DB_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: rds-secrets-sync # The K8s Secret created by the sync mechanism (see Note below)
+                key: DB_USERNAME
+          - name: DB_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: rds-secrets-sync
+                key: DB_PASSWORD
+          # ... (Other non-sensitive ConfigMap injections are separate) ...
+          
+        volumeMounts:
+          # Mount the CSI volume into the Django container
+          - name: secrets-store-volume
+            mountPath: "/mnt/secrets"
+            readOnly: true
+            
+
+          # Retrieve non-sensitive parameters from AWS Parameter Store
+        envFrom:
+          # Inject non-sensitive config
+          - configMapRef:
+              name: app-config-v1
+          
+        # Liveness & Readiness Probes (Crucial for EKS)
+        readinessProbe: 
+          httpGet:
+            path: /health/ready
+            port: 8000
+          initialDelaySeconds: 10 # Allow time for DB connection
+          timeoutSeconds: 3
+        livenessProbe: 
+          httpGet:
+            path: /health/live
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 20
+      volumes:
+        # Define the volume that uses the CSI Driver
+        - name: secrets-store-volume
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: rds-secret-provider # Reference the manifest above
+# ...          

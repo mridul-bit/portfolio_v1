@@ -1,0 +1,44 @@
+name: 🚀 Frontend CDN Deploy
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'portfolio-frontend/**'
+
+env:
+  AWS_REGION: us-east-1
+  S3_BUCKET_NAME: portfolio-v1-frontend-bucket
+  CF_DISTRIBUTION_ID: ${{ secrets.CLOUDFRONT_DISTRO_ID }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    
+    steps:
+    # ... (Checkout code step) ...
+    # ... (Configure AWS credentials via OIDC step) ...
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install dependencies and build React App
+      run: |
+        cd portfolio-frontend
+        npm install
+        npm run build # Ensure your package.json has a build script
+        
+    - name: Upload Build Files to S3
+      run: |
+        # Sync the entire build directory to the S3 bucket root
+        aws s3 sync portfolio-frontend/dist/ s3://${{ env.S3_BUCKET_NAME }}/ --delete 
+        
+    - name: Invalidate CloudFront Cache (Mandatory for new deployment)
+      run: |
+        aws cloudfront create-invalidation --distribution-id ${{ env.CF_DISTRIBUTION_ID }} --paths "/*"
+        echo "CloudFront cache invalidated. New frontend is live."
