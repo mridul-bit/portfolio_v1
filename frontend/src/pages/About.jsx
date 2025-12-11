@@ -73,7 +73,7 @@ const TechStackMarquee = () => {
 
 const About = () => {
   // 1. Terminal Typing Effect Logic
-  const fullText = "Expert DevOps | Backend Architect | Cloud-Native Solutions";
+  const fullText = "I design and deploy highly secure, scalable, and cost-efficient backend systems and cloud infrastructure. This site, V1, is a live demonstration of my commitment to production-grade best practices.";
 const [displayedText, setDisplayedText] = useState('');
 const [index, setIndex] = useState(0); 
 
