@@ -8,8 +8,8 @@ on:
       - 'resume/**' # Triggers only on changes to the resume directory
 
 env:
-  AWS_REGION: ${{ secrets.AWS_REGION }}
-  LOCAL_RESUME_PATH: resume/Mridul_deployCV.pdf # Local path to the resume file
+  
+  LOCAL_RESUME_PATH: resume/cv.pdf # Local path to the resume file 
 
 jobs:
   resume-upload:
@@ -29,7 +29,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.GH_ACTIONS_DEPLOY_ROLE_ARN }} 
-          aws-region: ${{ env.AWS_REGION }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Upload Resume File to Secure S3 Bucket
         run: |

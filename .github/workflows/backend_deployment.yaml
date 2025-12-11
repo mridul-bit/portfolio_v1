@@ -8,7 +8,7 @@ on:
       - 'backend/**' # Triggers only on changes to the backend directory
 
 env:
-  AWS_REGION: ${{ secrets.AWS_REGION }} 
+  
   CONTAINER_NAME: ${{ secrets.CONTAINER_NAME }} # Hardcoded name from the Task Definition
 
 jobs:
@@ -29,7 +29,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.GH_ACTIONS_DEPLOY_ROLE_ARN }} 
-          aws-region: ${{ env.AWS_REGION }}
+          aws-region: ${{ secrets.AWS_REGION }} 
           
       - name: Login to Amazon ECR
         id: login-ecr

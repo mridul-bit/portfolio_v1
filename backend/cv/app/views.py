@@ -10,11 +10,14 @@ from .models import DownloadLog
 logger = logging.getLogger('core')
 
 # Retrieve critical config from AWS Systems Manager Parameter Store via environment
-from decouple import config
-RESUME_S3_KEY = config('RESUME_S3_KEY') 
-RESUME_BUCKET_NAME = config('RESUME_BUCKET_NAME')
-EXPIRATION_SECONDS = 60
+import os
 
+# Get values directly from the environment variables supplied by ECS
+RESUME_S3_KEY = os.environ.get('RESUME_S3_KEY') 
+RESUME_BUCKET_NAME = os.environ.get('RESUME_BUCKET_NAME')
+EXPIRATION_SECONDS = 60
+print("Resume S3 Key:", RESUME_S3_KEY)
+print("Resume Bucket Name:", RESUME_BUCKET_NAME)
 
 @api_view(['GET'])
 def liveness_probe(request):
@@ -33,7 +36,7 @@ def readiness_probe(request):
 
     return Response({'status': 'OK', 'system': 'Ready to Serve'}, status=200)
 
-
+##radom comment to check cicd
 # --- Secure API Endpoint ---
 
 @api_view(['GET'])

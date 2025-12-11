@@ -9,7 +9,7 @@ const Booking = () => {
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
-
+  console.log("booking page");
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
