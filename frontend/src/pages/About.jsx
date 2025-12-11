@@ -73,7 +73,7 @@ const TechStackMarquee = () => {
 
 const About = () => {
   // 1. Terminal Typing Effect Logic
-  const fullText = "I design and deploy highly secure, scalable, and cost-efficient backend systems and cloud infrastructure. This site, V1, is a live demonstration of my commitment to production-grade best practices.";
+  const fullText = "Expert DevOps | Backend Architect | Cloud-Native Solutions";
 const [displayedText, setDisplayedText] = useState('');
 const [index, setIndex] = useState(0); 
 
@@ -99,7 +99,7 @@ useEffect(() => {
   // Placeholder URL for your resume (will point to S3/CloudFront)
   const resumeUrl = "https://cdn.yourdomain.com/my-resume.pdf"; 
   // Placeholder URL for your YouTube video
-  const videoUrl = "https://www.youtube.com/embed/7iHl71nt49o"; 
+  const videoUrl = "https://www.youtube.com/embed"; 
   
   return (
     <section className="py-16 md:py-24">
