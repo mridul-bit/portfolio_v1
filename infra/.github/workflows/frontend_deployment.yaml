@@ -1,0 +1,54 @@
+
+name: Frontend CDN CI/CD
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'frontend/**' 
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }} 
+  FRONTEND_DIR: frontend
+
+jobs:
+  frontend-deploy:
+    name: 'Frontend CDN Deploy'
+    runs-on: ubuntu-latest
+    environment: Production
+    
+    permissions:
+      id-token: write
+      contents: read
+    
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+      
+    - name: Configure AWS Credentials (OIDC) 
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ secrets.GH_ACTIONS_DEPLOY_ROLE_ARN }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install dependencies and build React App
+      run: |
+        cd ${{ env.FRONTEND_DIR }}
+        npm install
+        npm run build 
+        
+    - name: Upload Build Files to S3
+      run: |
+        # Use S3_FRONTEND_BUCKET secret
+        aws s3 sync ${{ env.FRONTEND_DIR }}/dist/ s3://${{ secrets.S3_FRONTEND_BUCKET }}/ --delete 
+        
+    - name: Invalidate CloudFront Cache
+      run: |
+        # Use CLOUDFRONT_DISTRO_ID secret
+        aws cloudfront create-invalidation --distribution-id ${{ secrets.CLOUDFRONT_DISTRO_ID }} --paths "/*"
+        echo "CloudFront cache invalidated. New frontend is live."

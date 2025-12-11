@@ -1,33 +1,68 @@
-# 1. WAF Rate Limiting Rule (CTO-level Throttling)
-resource "aws_wafv2_web_acl" "rate_limit_acl" {
-  name        = "PortfolioV1RateLimitACL"
-  scope       = "REGIONAL" # Apply to ALB (not CloudFront)
-  description = "Rate limiting for the EKS Monolith API"
+# infra/terraform/waf.tf
+
+
+
+# --- 1. AWS WAFv2 Web ACL (Global for CloudFront) ---
+resource "aws_wafv2_web_acl" "portfolio_waf" {
+  name        = "${var.project_name}-web-acl"
+  description = "WAFv2 for Portfolio CloudFront Distribution with managed rules and rate limiting."
+  scope       = "CLOUDFRONT" # CRITICAL: Scope must be CLOUDFRONT
+  provider = aws.us-east-1
+  
   default_action {
-    allow {} # Default action is to allow
+    allow {}
   }
   
-  # Rule: Block requests exceeding 100/5 minutes from the same IP
+  visibility_config {
+    cloudwatch_metrics_enabled = true
+    metric_name                = "PortfolioWAF"
+    sampled_requests_enabled   = true
+  }
+
+  # --- Rule 1: AWS Managed Rules (Common Attack Protection) ---
   rule {
-    name     = "IPRateLimit"
-    priority = 1
-    action {
-      block {}
+    name      = "AWS-Managed-Common-Rules"
+    priority  = 1
+
+    override_action {
+      none {}
     }
+    
     statement {
-      rate_limit_statement {
-        limit               = 100 # Block after 100 requests (generous limit for testing)
-        aggregate_key_type  = "IP"
+      managed_rule_group_statement {
+        vendor_name = "AWS"
+        name        = "AWSManagedRulesCommonRuleSet"
       }
     }
+    
     visibility_config {
       cloudwatch_metrics_enabled = true
-      metric_name                = "PortfolioRateLimitMetric"
+      metric_name                = "CommonRuleSet"
       sampled_requests_enabled   = true
     }
   }
-
-  tags = {
-    Name = "PortfolioV1WAF"
+  
+  # --- Rule 2 (Rate Limiting Rule - IP-based Throttling) ---
+  rule {
+    name      = "IPRateLimit"
+    priority  = 3 
+    
+    action {
+      block {} # Block requests that exceed the limit
+    }
+    
+    # CRITICAL FIX: The rate_limit_statement MUST be directly inside the statement block.
+    statement {
+      rate_based_statement {
+        limit               = 200
+        aggregate_key_type  = "IP"
+      }
+    }
+    
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "CloudFrontRateLimitMetric"
+      sampled_requests_enabled   = true
+    }
   }
 }

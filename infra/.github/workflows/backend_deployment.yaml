@@ -1,0 +1,109 @@
+
+name: Backend Fargate CI/CD
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'backend/**' # Triggers only on changes to the backend directory
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }} 
+  CONTAINER_NAME: ${{ secrets.CONTAINER_NAME }} # Hardcoded name from the Task Definition
+
+jobs:
+  backend-deploy:
+    name: 'Backend Fargate Deploy'
+    runs-on: ubuntu-latest
+    environment: Production
+    
+    permissions: 
+      id-token: write
+      contents: read
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.GH_ACTIONS_DEPLOY_ROLE_ARN }} 
+          aws-region: ${{ env.AWS_REGION }}
+          
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+        
+      - name: Build and Push Docker Image
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }} #creates tags
+          
+          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }} 
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG backend/
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          echo "image_uri=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+          
+      - name: Run Database Migrations (Isolated Task) 💾
+        run: |
+          # 1. Capture the image URI directly (no need for a separate shell variable line)
+          # The entire run-task command will output the Task ARN.
+          MIGRATION_TASK_ARN=$(aws ecs run-task \
+            --cluster ${{ secrets.ECS_CLUSTER_NAME }} \
+            --task-definition ${{ secrets.ECS_TASK_DEFINITION_FAMILY }} \
+            --launch-type FARGATE \
+            --override-container 'name=${{ env.CONTAINER_NAME }},image=${{ steps.build-image.outputs.image_uri }},command=["python", "manage.py", "migrate", "--noinput"]' \
+            --network-configuration "awsvpcConfiguration={subnets=[${{ secrets.PRIVATE_SUBNET_ID }}],securityGroups=[${{ secrets.FARGATE_SG_ID }}],assignPublicIp=DISABLED}" \
+            --query 'tasks[0].taskArn' \
+            --output text)
+
+          echo "Launched migration task: $MIGRATION_TASK_ARN"
+
+          # 2. Wait explicitly for the launched task ARN to stop.
+          # If the task exits with a non-zero code (i.e., migration failed), 
+          # this 'wait' command will fail the entire step.
+          aws ecs wait tasks-stopped \
+            --cluster ${{ secrets.ECS_CLUSTER_NAME }} \
+            --tasks $MIGRATION_TASK_ARN
+            
+          # 3. Check the exit code for the most robust validation
+          EXIT_CODE=$(aws ecs describe-tasks \
+            --cluster ${{ secrets.ECS_CLUSTER_NAME }} \
+            --tasks $MIGRATION_TASK_ARN \
+            --query 'tasks[0].containers[0].exitCode' \
+            --output text)
+
+          if [ "$EXIT_CODE" != "0" ]; then
+            echo "::error::Database migration failed (Exit Code: $EXIT_CODE). Check task logs."
+            exit 1
+          fi
+          
+          echo "Database migration complete."
+
+      - name: Download and Render Task Definition 
+        uses: aws-actions/amazon-ecs-render-task-definition@v1 #creates bluprint of task def
+        id: render-task-def
+        with:
+          task-definition: ${{ secrets.ECS_TASK_DEFINITION_FAMILY }}
+          container-name: ${{ env.CONTAINER_NAME }}
+          image: ${{ steps.build-image.outputs.image_uri }}
+
+      - name: Register New Task Definition
+        id: register-task-def
+        uses: aws-actions/amazon-ecs-register-task-definition@v1
+        with:
+         
+          task-definition: ${{ steps.render-task-def.outputs.task-definition }}
+        
+
+      - name: Update ECS Service and Wait for Rollout
+        uses: aws-actions/amazon-ecs-deploy@v1 #uses rolling deployment
+        with:
+          
+          task-definition: ${{ steps.register-task-def.outputs.task-definition-arn }} 
+          service: ${{ secrets.ECS_SERVICE_NAME }}
+          cluster: ${{ secrets.ECS_CLUSTER_NAME }}
+          

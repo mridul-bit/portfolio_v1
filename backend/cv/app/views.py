@@ -15,11 +15,10 @@ RESUME_S3_KEY = config('RESUME_S3_KEY')
 RESUME_BUCKET_NAME = config('RESUME_BUCKET_NAME')
 EXPIRATION_SECONDS = 60
 
-# --- EKS Health Probes ---
 
 @api_view(['GET'])
 def liveness_probe(request):
-    """EKS Liveness Probe: Checks if the Django process is running."""
+    
     return Response({'status': 'OK', 'system': 'Alive'}, status=200)
 
 @api_view(['GET'])

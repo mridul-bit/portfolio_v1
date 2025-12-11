@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 const handleResumeDownload = async () => {
     // 1. Call the Django Backend API
-    const API_URL = '/api/v1/download/resume/'; // This endpoint is on the Django Monolith
+    const API_URL = "https://api.yourportfolio.com"; // This endpoint is on the Django Monolith
     
     try {
         const response = await fetch(API_URL, {

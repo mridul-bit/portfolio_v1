@@ -1,26 +1,29 @@
-# 1. ALB Security Group (Allows HTTPS from the World)
+# infra/terraform/security.tf
+
+
+
+#----------------------------- ALB Security Group ----------------------------------------
+
 resource "aws_security_group" "alb" {
   vpc_id = aws_vpc.portfolio_vpc.id
   name   = "portfolio-alb-sg"
 
-  # Inbound: Allow HTTPS (443) from anywhere (0.0.0.0/0)
   ingress {
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
-    description = "Allow HTTPS access from public internet"
+    description = "Allow HTTPS access"
   }
-  
-  # Inbound: Allow HTTP (80) from anywhere (redirected to HTTPS by ALB)
   ingress {
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
+    description = "Allow HTTP access"
   }
   
-  # Outbound: Allow all outbound traffic (standard for ALB)
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -29,35 +32,69 @@ resource "aws_security_group" "alb" {
   }
 }
 
-# 2. EKS Node Group Security Group (Allows traffic only from ALB and itself)
-resource "aws_security_group" "eks_nodes" {
+
+# -------------------------Fargate Task Security Group -------------------------------
+# App waf
+resource "aws_security_group" "fargate_tasks" {
   vpc_id = aws_vpc.portfolio_vpc.id
-  name   = "portfolio-eks-nodes-sg"
+  name   = "portfolio-fargate-tasks-sg"
   
-  # Inbound: Allow all traffic from the ALB's security group (crucial routing)
   ingress {
-    from_port       = 80
-    to_port         = 80
+    from_port       = 8000
+    to_port         = 8000
     protocol        = "tcp"
     security_groups = [aws_security_group.alb.id]
-    description     = "Allow HTTP/80 from ALB"
+    description     = "Allow app traffic (8000) from ALB"
   }
-  # ... Also needs rules for EKS control plane and internal pod communication (omitted for brevity)
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 }
 
-# 3. RDS Security Group (Allows traffic only from EKS Nodes)
+
+# -------------------------- RDS Security Group----------------------------
+
 resource "aws_security_group" "rds" {
   vpc_id = aws_vpc.portfolio_vpc.id
   name   = "portfolio-rds-sg"
 
-  # Inbound: Allow Postgres port (5432) ONLY from the EKS nodes' security group
+
   ingress {
     from_port       = 5432
     to_port         = 5432
     protocol        = "tcp"
-    security_groups = [aws_security_group.eks_nodes.id]
-    description     = "Allow Postgres traffic from EKS nodes"
+    security_groups = [aws_security_group.fargate_tasks.id]
+    description     = "Allow Postgres traffic from Fargate tasks"
   }
   
-  # Outbound: None needed, unless accessing external services.
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "Allow outbound to AWS services via NAT for maintenance"
+  }
+}
+
+
+# -----------------------------VPC Endpoint Security Group -----------------------------------------
+
+resource "aws_security_group" "vpc_endpoint_sg" {
+  vpc_id = aws_vpc.portfolio_vpc.id
+  name   = "portfolio-vpc-endpoint-sg"
+  
+  # Ingress: Allow ALL traffic (all ports/protocols) from the Fargate Task Security Group
+  ingress {
+    from_port       = 0
+    to_port         = 0
+    protocol        = "-1"
+    security_groups = [aws_security_group.fargate_tasks.id]
+    description     = "Allow internal traffic from Fargate tasks to endpoints"
+  }
+  
+
 }

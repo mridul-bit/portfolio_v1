@@ -16,11 +16,11 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path
-from core.views import secure_resume_download, liveness_probe, readiness_probe
+from app.views import secure_resume_download, liveness_probe, readiness_probe
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    # Production-Mandatory EKS Probes
+    # Production-Mandatory EKS Probes   
     path('health/live', liveness_probe, name='liveness-probe'), 
     path('health/ready', readiness_probe, name='readiness-probe'), 
     

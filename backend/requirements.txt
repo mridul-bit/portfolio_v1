@@ -1,0 +1,17 @@
+# Core Django dependencies
+Django
+gunicorn  # Production WSGI server (required for Fargate deployment)
+psycopg2-binary  # PostgreSQL adapter for your RDS database
+
+# Configuration and Environment Management
+python-decouple  # For using 'config' to manage settings from .env or environment variables
+
+# AWS SDK and Related Libraries
+boto3  # AWS SDK for Python (used for Secrets Manager, S3, etc.)
+botocore  # The low-level interface used by boto3
+
+# API Framework
+djangorestframework  # For using 'api_view', 'Response', etc.
+
+# Optional (but good practice)
+# djangorestframework-simplejwt # If you plan to use JWT for authentication

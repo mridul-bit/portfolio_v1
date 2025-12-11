@@ -1,0 +1,40 @@
+# .github/workflows/resume_deployment.yml
+name:  Resume Uploader CI/CD
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'resume/**' # Triggers only on changes to the resume directory
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  LOCAL_RESUME_PATH: resume/Mridul_deployCV.pdf # Local path to the resume file
+
+jobs:
+  resume-upload:
+    name: 'Secure Resume S3 Uploader'
+    runs-on: ubuntu-latest
+    environment: Production
+    
+    permissions:
+      id-token: write # requests jwt token from github OIDC
+      contents: read
+    
+    steps:
+      - name: Checkout Code # copies repo to runner
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials (OIDC)  #uses jwt token for  aws verfication for repo account
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.GH_ACTIONS_DEPLOY_ROLE_ARN }} 
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upload Resume File to Secure S3 Bucket
+        run: |
+          # Uses the secrets injected by Terraform for the destination
+          aws s3 cp ${{ env.LOCAL_RESUME_PATH }} s3://${{ secrets.RESUME_BUCKET_ID }}/${{ secrets.RESUME_S3_KEY }} --acl private 
+      
+      - name: Confirmation
+        run: echo "Resume successfully synchronized to s3://${{ secrets.RESUME_BUCKET_ID }}/${{ secrets.RESUME_S3_KEY }}"

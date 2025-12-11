@@ -1,81 +1,77 @@
-# 1. AWS Certificate Manager (ACM) - Free SSL/TLS
-resource "aws_acm_certificate" "portfolio_cert" {
-  domain_name               = var.domain_name
-  subject_alternative_names = ["*.${var.domain_name}"]
-  validation_method         = "DNS"
-  lifecycle {
-    create_before_destroy = true
+  # infra/terraform/storage.tf
+
+  # ---------------------------Frontend S3 Bucket -----------------------------
+  resource "aws_s3_bucket" "frontend_bucket" {
+    bucket = "${var.project_name}-frontend-static-${var.aws_account_id}"
+
   }
-}
-
-# 2. S3 Bucket for Frontend (Public via CDN)
-resource "aws_s3_bucket" "frontend_bucket" {
-  bucket = "portfolio-v1-frontend-${var.aws_account_id}"
-}
-
-# 3. S3 Bucket for Secure Resume (Private)
-resource "aws_s3_bucket" "resume_bucket" {
-  bucket = "portfolio-v1-resume-${var.aws_account_id}"
-}
-
-# 4. CloudFront Origin Access Identity (OAI) for S3 Security
-resource "aws_cloudfront_origin_access_identity" "oai" {
-  comment = "OAI for accessing S3 frontend bucket securely"
-}
-
-# 5. CloudFront Distribution (CDN)
-resource "aws_cloudfront_distribution" "portfolio_cdn" {
-  # ... standard distribution settings ...
-  enabled = true
-  
-  # Origin 1: Static Frontend (S3)
-  origin {
-    domain_name = aws_s3_bucket.frontend_bucket.bucket_regional_domain_name
-    origin_id   = "S3-Frontend"
-    s3_origin_config {
-      origin_access_identity = aws_cloudfront_origin_access_identity.oai.cloudfront_access_identity_path
-    }
-  }
-
-  # Origin 2: Django API (EKS ALB) - Must be configured AFTER ALB is provisioned by EKS
-  origin {
-    domain_name = aws_lb.eks_ingress_alb.dns_name # Placeholder for the ALB provisioned by the K8s Controller
-    origin_id   = "EKS-Backend-ALB"
-    custom_origin_config {
-      http_port  = 80
-      https_port = 443
-      origin_protocol_policy = "https-only"
-      origin_ssl_protocols   = ["TLSv1.2"]
-    }
-  }
-
-  default_cache_behavior {
-    target_origin_id       = "S3-Frontend"
-    viewer_protocol_policy = "redirect-to-https"
-    # ... other caching settings for React static files ...
-  }
-  
-  # API Routing Behavior (CTO-level: bypass cache and forward securely to backend)
-  ordered_cache_behavior {
-    path_pattern           = "/api/*"
-    target_origin_id       = "EKS-Backend-ALB"
-    viewer_protocol_policy = "redirect-to-https"
-    allowed_methods        = ["GET", "HEAD", "OPTIONS", "POST"]
-    cached_methods         = ["GET", "HEAD"]
-    compress               = true
-    forwarded_values {
-      query_string = true
-      headers      = ["Host", "Authorization"]
-      cookies {
-        forward = "none"
+  resource "aws_s3_bucket_server_side_encryption_configuration" "frontend_encryption" {
+    bucket = aws_s3_bucket.frontend_bucket.id
+    rule {
+    apply_server_side_encryption_by_default {
+        sse_algorithm = "AES256"
       }
     }
   }
+  resource "aws_s3_bucket_versioning" "frontend_versioning" {
+    bucket = aws_s3_bucket.frontend_bucket.id
 
-  # SSL/TLS Termination using ACM
-  viewer_certificate {
-    acm_certificate_arn      = aws_acm_certificate.portfolio_cert.arn
-    ssl_support_method       = "sni-only"
-    minimum_protocol_version = "TLSv1.2_2021" 
+    versioning_configuration {
+      status = "Enabled"
+    }
   }
-}
+  resource "aws_s3_bucket_ownership_controls" "frontend_bucket_controls" {
+  
+    bucket = aws_s3_bucket.frontend_bucket.id 
+  
+    rule {
+      # Valid values: BucketOwnerPreferred, ObjectWriter, BucketOwnerEnforced
+      object_ownership = "BucketOwnerEnforced" 
+    }
+  }
+
+  resource "aws_s3_bucket_public_access_block" "frontend_bucket_pab" {
+    bucket = aws_s3_bucket.frontend_bucket.id
+
+  # These settings ensure no one can make the bucket truly public, 
+  # but allow the explicit OAC policy to function.
+    block_public_acls       = true
+    block_public_policy     = false  # false to allow the Bucket Policy
+    ignore_public_acls      = true
+    restrict_public_buckets = true
+  }    
+
+
+  # ------------------------- Resume S3 Bucket-----------------------
+  resource "aws_s3_bucket" "resume_bucket" {
+    bucket = "${var.project_name}-resume-data-${var.aws_account_id}"
+    
+    
+
+    tags = {
+      Name = "${var.project_name}-resume-data"
+    }
+  }
+
+  # -------------------CloudFront Log S3 Bucket ------------------------------------
+  resource "aws_s3_bucket" "cf_log_bucket" {
+    bucket = "${var.project_name}-cf-access-logs-${var.aws_account_id}"
+
+  }
+  resource "aws_s3_bucket_ownership_controls" "cf_log_ownership" {
+    bucket = aws_s3_bucket.cf_log_bucket.id
+  
+    rule {
+    
+      object_ownership = "ObjectWriter" 
+    }
+  }
+  # ----------------------------Output-------------------------------
+  output "frontend_bucket_id" {
+    description = "ID of the S3 bucket hosting the frontend."
+    value       = aws_s3_bucket.frontend_bucket.id
+  }
+  output "cf_log_bucket_id" {
+    description = "ID of the S3 bucket for CloudFront logs."
+    value       = aws_s3_bucket.cf_log_bucket.id
+  }
