@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+
+//random commendt to check cicd
+
 const handleResumeDownload = async () => {
     // 1. Call the Django Backend API
-    const API_URL = "https://api.yourportfolio.com"; // This endpoint is on the Django Monolith
-    
+    const API_URL = "https://api.talkwithmridul.work"; // This endpoint is on the Django Monolith
+    console.log("about page");
     try {
         const response = await fetch(API_URL, {
             method: 'GET',
