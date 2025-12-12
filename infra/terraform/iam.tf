@@ -171,7 +171,14 @@ resource "aws_iam_policy" "cicd_deploy_policy" {
           "ecs:StopTask",
           "ecs:DescribeTasks"
         ],
-        Resource = "*",
+        "Resource": [
+          // 1. Must include the specific Task Definition family ARN with wildcard revision
+          // This directly addresses the error "on resource: arn:aws:ecs:***:task-definition/***:13"
+          "arn:aws:ecs:${var.aws_region}:${var.aws_account_id}:task-definition/${aws_ecs_task_definition.django_monolith_task.family}:*",
+          
+          // 2. Must still include the wildcard for Fargate's internal checks
+          "*"
+        ],
         Condition = {
           "ArnEquals" = {
             "ecs:cluster" = aws_ecs_cluster.portfolio_ecs.arn
