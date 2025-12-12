@@ -131,7 +131,10 @@ resource "aws_iam_policy" "cicd_deploy_policy" {
           "ecr:GetRepositoryPolicy",
           "ecr:ListImages",
           "ecr:DescribeImages",
-          "ecr:InitiateLayerUpload" 
+          "ecr:InitiateLayerUpload",
+          "ecr:UploadLayerPart", 
+          "ecr:CompleteLayerUpload",
+          "ecr:PutImage"
         ],
         Resource = "*"
       },
@@ -147,7 +150,15 @@ resource "aws_iam_policy" "cicd_deploy_policy" {
           "ecs:DescribeTaskDefinition",
           "ecs:DescribeServices",
           "ecs:DescribeClusters",
-          "ecs:ListServices"
+          "ecs:ListServices",
+          "elasticloadbalancing:DescribeTargetGroups",
+          "elasticloadbalancing:DescribeLoadBalancers",
+          "elasticloadbalancing:DescribeListeners",
+          "application-autoscaling:Describe*",
+          "application-autoscaling:PutScalingPolicy",
+          "application-autoscaling:RegisterScalableTarget",
+          "cloudwatch:DescribeAlarms",
+          "cloudwatch:PutMetricAlarm"
         ],
         Resource = "*"
       },
