@@ -48,7 +48,7 @@ resource "aws_iam_policy" "django_app_policy" {
       {
         Sid      = "AllowSecretsManagerAccess",
         Effect   = "Allow",
-        # Added the DescribeSecret action, often needed for credential rotation/discovery
+        
         Action   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"],
         Resource = [
           aws_secretsmanager_secret.db_credentials.arn,
@@ -58,7 +58,7 @@ resource "aws_iam_policy" "django_app_policy" {
         Sid      = "AllowParameterStoreAccess",
         Effect   = "Allow",
         Action   = ["ssm:GetParameter", "ssm:GetParameters"],
-        # CRITICAL FIX: Use var.project_name to scope access to all /portfolio/* parameters.
+      
         Resource = aws_ssm_parameter.resume_s3_key.arn
       },
       {
@@ -122,9 +122,14 @@ resource "aws_iam_policy" "cicd_deploy_policy" {
     Statement = [
       # ECR: Push the new Docker image
       {
+        Effect  = "Allow",
+        Action  = "ecr:GetAuthorizationToken",
+        Resource = "*" 
+      },
+      {
         Effect   = "Allow",
         Action   = [
-          "ecr:GetAuthorizationToken",
+          
           "ecr:BatchCheckLayerAvailability",
           "ecr:GetDownloadUrlForLayer",
           "ecr:GetRepositoryPolicy",
@@ -163,7 +168,8 @@ resource "aws_iam_policy" "cicd_deploy_policy" {
           "s3:PutObject",
           "s3:GetObject",
           "s3:DeleteObject",
-          "s3:ListBucket"
+          "s3:ListBucket",
+          "s3:PutObjectAcl"
         ],
         Resource = [
           aws_s3_bucket.frontend_bucket.arn,
