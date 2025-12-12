@@ -18,7 +18,7 @@ RESUME_BUCKET_NAME = os.environ.get('RESUME_BUCKET_NAME')
 EXPIRATION_SECONDS = 60
 
 # zzzz
-print(f"Resume S3 Key: {RESUME_S3_KEY}, Bucket: {RESUME_BUCKET_NAME}, Expiration: {EXPIRATION_SECONDS}s")
+
 @api_view(['GET'])
 def liveness_probe(request):
     

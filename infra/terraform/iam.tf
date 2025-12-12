@@ -202,13 +202,7 @@ resource "aws_iam_policy" "cicd_deploy_policy" {
           "StringEquals" = {
             "iam:PassedToService" = "ecs-tasks.amazonaws.com"
           }
-          "StringLike" : {
-            "ecs:task-definition": [
-              aws_ecs_task_definition.django_monolith_task.family,
-              // The temporary task definition family being created
-              "${aws_ecs_task_definition.django_monolith_task.family}*"
-            ]
-          }
+  
         }
       },
       # 5. EC2 Networking Describe (Non-Obvious Fargate Dependency)
