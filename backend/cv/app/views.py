@@ -17,7 +17,9 @@ RESUME_S3_KEY = os.environ.get('RESUME_S3_KEY')
 RESUME_BUCKET_NAME = os.environ.get('RESUME_BUCKET_NAME')
 EXPIRATION_SECONDS = 60
 
-print(f"Resume S3 Key: {RESUME_S3_KEY}, Bucket: {RESUME_BUCKET_NAME}")
+print(f"Configured Resume S3 Key: {RESUME_S3_KEY}")
+print(f"Configured Resume Bucket Name: {RESUME_BUCKET_NAME}")
+print(f"Configured Presigned URL Expiration (seconds): {EXPIRATION_SECONDS}")
 @api_view(['GET'])
 def liveness_probe(request):
     
@@ -37,8 +39,8 @@ def readiness_probe(request):
 
 ##radom comment to check cicd
 # --- Secure API Endpoint ---
-print(f"Setting up secure resume download endpoint with S3 Key: {RESUME_S3_KEY} in Bucket: {RESUME_BUCKET_NAME}")
-print(f"Expiration time for presigned URL: {EXPIRATION_SECONDS} seconds")
+# print(f"Setting up secure resume download endpoint with S3 Key: {RESUME_S3_KEY} in Bucket: {RESUME_BUCKET_NAME}")
+# print(f"Expiration time for presigned URL: {EXPIRATION_SECONDS} seconds")
 @api_view(['GET'])
 # Note: Rate Limiting is applied by the Kubernetes Ingress/ALB layer, but Django-ratelimit is installed.
 def secure_resume_download(request):
