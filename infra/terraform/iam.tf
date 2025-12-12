@@ -115,151 +115,97 @@ resource "aws_iam_role" "github_actions_role" {
 
 resource "aws_iam_policy" "cicd_deploy_policy" {
   name        = "portfolio-cicd-deploy-policy"
-  description = "Policy for GitHub Actions to deploy to S3, ECR, and update ECS."
+  description = "Permissions for GitHub Actions to deploy to ECS and run migrations."
 
   policy = jsonencode({
     Version = "2012-10-17",
     Statement = [
-      # 1. ECR: Get Authorization Token (Resource MUST be "*")
-      # This is the industry standard practice. The GetAuthorizationToken API call
-      # does not support resource-level permissions (ARNs) and must use *.
+      # 1. ECR Access (Assuming this is for image pull/push)
       {
-        "Effect": "Allow",
-        "Action": [
-          "ecr:GetAuthorizationToken"
-        ],
-        "Resource": "*" 
-      },
-      # 2. ECR: Image Push and Management (Scoped to Repo ARN)
-      # BatchGetImage and GetDownloadUrlForLayer moved here as they relate to the repo.
-      {
-        "Effect": "Allow",
-        "Action": [
-          "ecr:BatchGetImage",
-          "ecr:GetDownloadUrlForLayer",
-          "ecr:GetRepositoryPolicy",
-          "ecr:DescribeRepositories",
-          "ecr:ListImages",
-          "ecr:DescribeImages",
+        Effect = "Allow",
+        Action = [
+          "ecr:GetAuthorizationToken",
           "ecr:BatchCheckLayerAvailability",
-          "ecr:InitiateLayerUpload",
-          "ecr:UploadLayerPart",
-          "ecr:CompleteLayerUpload",
-          "ecr:PutImage"
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchGetImage",
+          "ecr:GetRepositoryPolicy",
+          "ecr:ListImages",
+          "ecr:DescribeImages"
         ],
-        "Resource": aws_ecr_repository.django_repo.arn
+        Resource = "*"
       },
-      # 3. ECS: Task Definition Management (Register/Deregister)
-      # Replaced Resource = "*" with scoped ARNs for security and robustness.
+      # 2. ECS Task/Service Management (Create/Update Service and Register/Describe TD)
       {
-        "Effect": "Allow",
-        "Action": [
-          "ecs:DescribeTaskDefinition",
-          "ecs:RegisterTaskDefinition",
-          "ecs:DeregisterTaskDefinition"
-        ],
-        "Resource": "*" 
-      },
-      # 4. ECS: Service Update Actions (Used for the final service rollout)
-      {
-        "Effect": "Allow",
-        "Action": [
+        Effect = "Allow",
+        Action = [
+          "ecs:CreateService",
           "ecs:UpdateService",
-          "ecs:DescribeServices"
+          "ecs:DeleteService",
+          "ecs:RegisterTaskDefinition",
+          "ecs:DeregisterTaskDefinition",
+          "ecs:DescribeTaskDefinition",
+          "ecs:DescribeServices",
+          "ecs:DescribeClusters",
+          "ecs:ListServices"
         ],
-        "Resource": "arn:aws:ecs:${var.aws_region}:${var.aws_account_id}:service/${aws_ecs_cluster.portfolio_ecs.name}/${aws_ecs_service.django_service.name}"
+        Resource = "*"
       },
-      # 5. ECS: Run Migration Task (FIXES RunTask ACCESS DENIED)
-      # Separated RunTask to apply specific Cluster ARN resource and Conditions.
+      # 3. ECS RunTask (THE CRITICAL BLOCK for Migration)
+      # Must use Resource: "*" with Condition to satisfy Fargate internal checks.
       {
-        "Effect": "Allow",
-        "Action": [
-          "ecs:RunTask"
-        ],
-        "Resource": "*", // MUST BE '*' to resolve the final access denied for RunTask
-        "Condition": {
-          "ArnEquals": {
-            "ecs:cluster": aws_ecs_cluster.portfolio_ecs.arn
-          },
-          "StringEquals": {
-            "ecs:task-definition": aws_ecs_task_definition.django_monolith_task.family // Constrains WHICH Task Definition can be run
-          }
-        }
-      },
-
-      # 5b. ECS: Stop/Describe Tasks (Scoped to specific Task ARNs)
-      {
-        "Effect": "Allow",
-        "Action": [
+        Effect = "Allow",
+        Action = [
+          "ecs:RunTask",
           "ecs:StopTask",
           "ecs:DescribeTasks"
         ],
-        "Resource": [
-          "arn:aws:ecs:${var.aws_region}:${var.aws_account_id}:task/*" 
-        ]
-      },
-      # 6. S3: Sync frontend assets
-      {
-        "Effect": "Allow",
-        "Action": [
-          "s3:PutObject",
-          "s3:GetObject",
-          "s3:DeleteObject",
-          "s3:ListBucket",
-          "s3:PutObjectAcl"
-        ],
-        "Resource": [
-          aws_s3_bucket.frontend_bucket.arn,
-          "${aws_s3_bucket.frontend_bucket.arn}/*",
-          aws_s3_bucket.resume_bucket.arn,
-          "${aws_s3_bucket.resume_bucket.arn}/*"
-        ]
-      },
-      # 7. CloudFront: Invalidate the cache after frontend deployment
-      {
-        "Effect": "Allow",
-        "Action": [
-          "cloudfront:CreateInvalidation"
-        ],
-        "Resource": aws_cloudfront_distribution.portfolio_cdn.arn
-      },
-      # 8. Logs: Allow writing to log groups
-      {
-        "Effect": "Allow",
-        "Action": [
-          "logs:CreateLogStream",
-          "logs:PutLogEvents",
-          // ADD THESE LOGS ACTIONS IF THEY WERE IN YOUR OLD STATEMENT 5
-          "logs:CreateLogGroup"
-        ],
-        "Resource": aws_cloudwatch_log_group.django_log_group.arn
-      },
-      # 9. IAM: Pass Role (CRITICAL)
-      # Allows the GitHub Actions role to pass the Execution and Task roles to the ECS service/task.
-      {
-        "Effect": "Allow",
-        "Action": [
-          "iam:PassRole"
-        ],
-        "Resource": [
-          aws_iam_role.django_app_task_role.arn,     // Task Role (Application)
-          aws_iam_role.ecs_execution_role.arn      // Execution Role (Fargate)
-        ]
-        "Condition": {
-          "StringLike": {
-              "iam:PassedToService": "ecs-tasks.amazonaws.com"
-            }
+        Resource = "*",
+        Condition = {
+          "ArnEquals" = {
+            "ecs:cluster" = aws_ecs_cluster.portfolio_ecs.arn
+          },
+          "StringEquals" = {
+            "ecs:task-definition" = aws_ecs_task_definition.django_monolith_task.family
+          }
         }
       },
+      # 4. IAM PassRole (Required to delegate roles to ECS)
       {
-        "Effect": "Allow",
-        "Action": [
+        Effect = "Allow",
+        Action = [
+          "iam:PassRole"
+        ],
+        Resource = [
+          aws_iam_role.django_app_task_role.arn,
+          aws_iam_role.ecs_execution_role.arn
+        ],
+        Condition = {
+          "StringEquals" = {
+            "iam:PassedToService" = "ecs-tasks.amazonaws.com"
+          }
+        }
+      },
+      # 5. EC2 Networking Describe (Non-Obvious Fargate Dependency)
+      # Required by the calling role to validate the network parameters passed to RunTask.
+      {
+        Effect = "Allow",
+        Action = [
           "ec2:DescribeNetworkInterfaces",
           "ec2:DescribeSecurityGroups",
           "ec2:DescribeSubnets",
           "ec2:DescribeVpcs"
         ],
-        "Resource": "*" 
+        Resource = "*"
+      },
+      # 6. CloudWatch Logs (To view migration task output)
+      {
+        Effect = "Allow",
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ],
+        Resource = "arn:aws:logs:${var.aws_region}:${var.aws_account_id}:log-group:/ecs/*"
       }
     ]
   })
