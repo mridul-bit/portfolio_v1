@@ -110,3 +110,17 @@ resource "github_actions_secret" "fargate_sg_id" {
   secret_name     = "FARGATE_SG_ID"
   plaintext_value = aws_security_group.fargate_tasks.id 
 }
+
+resource "github_actions_secret" "ecs_task_role_arn" {
+  repository      = var.github_repository
+  secret_name     = "ECS_TASK_ROLE_ARN"
+ 
+  plaintext_value = aws_iam_role.django_app_task_role.arn
+}
+
+resource "github_actions_secret" "ecs_execution_role_arn" {
+  repository      = var.github_repository
+  secret_name     = "ECS_EXECUTION_ROLE_ARN"
+ 
+  plaintext_value = aws_iam_role.ecs_execution_role.arn
+}

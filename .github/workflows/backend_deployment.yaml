@@ -107,6 +107,8 @@ jobs:
           MIGRATION_TASK_ARN=$(aws ecs run-task \
             --cluster "$ECS_CLUSTER" \
             --task-definition "$TEMP_TD_ARN" \
+            --task-role ${{ secrets.ECS_TASK_ROLE_ARN }} \
+            --execution-role ${{ secrets.ECS_EXECUTION_ROLE_ARN }} \
             --launch-type FARGATE \
             --network-configuration "awsvpcConfiguration={subnets=[$PRIVATE_SUBNET],securityGroups=[$FARGATE_SG],assignPublicIp=DISABLED}" \
             --query 'tasks[0].taskArn' \

@@ -174,26 +174,29 @@ resource "aws_iam_policy" "cicd_deploy_policy" {
       {
         "Effect": "Allow",
         "Action": [
-          "ecs:RunTask",
-          "ecs:DescribeTasks",
-          "ecs:ListClusters",
-          "logs:CreateLogGroup",
-          "logs:CreateLogStream",
-          "logs:PutLogEvents"
+          "ecs:RunTask"
         ],
-        "Resource": [
-          aws_ecs_cluster.portfolio_ecs.arn,
-          aws_ecs_cluster.portfolio_ecs.arn, # Resource for RunTask MUST be the Cluster ARN
-          "arn:aws:ecs:${var.aws_region}:${var.aws_account_id}:task/*" 
-        ],
+        "Resource": "*", // MUST BE '*' to resolve the final access denied for RunTask
         "Condition": {
           "ArnEquals": {
             "ecs:cluster": aws_ecs_cluster.portfolio_ecs.arn
           },
           "StringEquals": {
-            "ecs:task-definition": aws_ecs_task_definition.django_monolith_task.family # Binds it to the TD Family
+            "ecs:task-definition": aws_ecs_task_definition.django_monolith_task.family // Constrains WHICH Task Definition can be run
           }
         }
+      },
+
+      # 5b. ECS: Stop/Describe Tasks (Scoped to specific Task ARNs)
+      {
+        "Effect": "Allow",
+        "Action": [
+          "ecs:StopTask",
+          "ecs:DescribeTasks"
+        ],
+        "Resource": [
+          "arn:aws:ecs:${var.aws_region}:${var.aws_account_id}:task/*" 
+        ]
       },
       # 6. S3: Sync frontend assets
       {
@@ -225,7 +228,9 @@ resource "aws_iam_policy" "cicd_deploy_policy" {
         "Effect": "Allow",
         "Action": [
           "logs:CreateLogStream",
-          "logs:PutLogEvents"
+          "logs:PutLogEvents",
+          // ADD THESE LOGS ACTIONS IF THEY WERE IN YOUR OLD STATEMENT 5
+          "logs:CreateLogGroup"
         ],
         "Resource": aws_cloudwatch_log_group.django_log_group.arn
       },
