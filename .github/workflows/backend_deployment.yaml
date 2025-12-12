@@ -112,10 +112,8 @@ jobs:
             --arg task_arn "$ECS_TASK_ROLE_ARN" \
             --arg exec_arn "$ECS_EXECUTION_ROLE_ARN" \
             '{
-              overrides: {
-                taskRoleArn: $task_arn,
-                executionRoleArn: $exec_arn
-              }
+              taskRoleArn: $task_arn,
+              executionRoleArn: $exec_arn
             }')
 
           MIGRATION_TASK_ARN=$(aws ecs run-task \
