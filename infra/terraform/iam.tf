@@ -158,10 +158,7 @@ resource "aws_iam_policy" "cicd_deploy_policy" {
           "ecs:RegisterTaskDefinition",
           "ecs:DeregisterTaskDefinition"
         ],
-        "Resource": [
-          "${aws_ecs_task_definition.django_monolith_task.arn}",
-          "${aws_ecs_task_definition.django_monolith_task.arn}:*" # Scope to the family
-        ]
+        "Resource": "*" 
       },
       # 4. ECS: Service Update Actions (Used for the final service rollout)
       {
