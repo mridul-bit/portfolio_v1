@@ -52,8 +52,8 @@ jobs:
       # --- 4. Run Database Migrations (Isolated Fargate Task) ---
       # CORRECTED: Uses --overrides flag with valid JSON structure, eliminating parsing errors.
       - name: Run Database Migrations (Isolated Task) 💾
+        id: migration-task
         env:
-          # Define required secrets/outputs as environment variables for easier shell access
           ECS_CLUSTER: ${{ secrets.ECS_CLUSTER_NAME }}
           TASK_FAMILY: ${{ secrets.ECS_TASK_DEFINITION_FAMILY }}
           PRIVATE_SUBNET: ${{ secrets.PRIVATE_SUBNET_ID }}
@@ -62,38 +62,69 @@ jobs:
           
         run: |
           CONTAINER_NAME="${{ env.CONTAINER_NAME }}"
-          
-          # 1. CONSTRUCT THE JSON OVERRIDES
-          # Note: We must install JQ if it wasn't already available on the runner, but it usually is.
-          # We use the official --overrides structure, which is the fix for the "Unknown options" error.
-          OVERRIDE_JSON=$(jq -n \
-            --arg image "$NEW_IMAGE_URI" \
-            --arg name "$CONTAINER_NAME" \
-            '{
-              containerOverrides: [
-                {
-                  name: $name,
-                  image: $image,
-                  command: ["python", "manage.py", "migrate", "--noinput"]
-                }
-              ]
-            }')
-            
-          echo "Generated Overrides JSON: $OVERRIDE_JSON"
+          MIGRATION_TASK_DEF_FILE="migration-task-def.json"
 
-          # 2. LAUNCH MIGRATION TASK
+          # 1. RENDER A TEMPORARY TASK DEFINITION (TO CHANGE THE IMAGE)
+          # We leverage the render action *without* registering it.
+          # We only need the file output locally.
+          aws ecs describe-task-definition \
+            --task-definition "$TASK_FAMILY" \
+            --query 'taskDefinition' \
+            --output json \
+            > temp-task-def.json
+            
+          # Use JQ to replace the image and set the migration command
+          jq --arg image "$NEW_IMAGE_URI" \
+             --arg name "$CONTAINER_NAME" \
+             '
+              .containerDefinitions[] |= 
+              (if .name == $name then 
+                .image = $image | 
+                .command = ["python", "manage.py", "migrate", "--noinput"]
+              else 
+                . 
+              end) | 
+              del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .placementConstraints, .compatibilities)
+             ' temp-task-def.json > "$MIGRATION_TASK_DEF_FILE"
+             
+          echo "Generated temporary Task Definition for migration: "
+          cat "$MIGRATION_TASK_DEF_FILE"
+
+          # 2. LAUNCH MIGRATION TASK using the full JSON
+          # We use the official structure and cli-input-json (or a similar approach)
+          # Since run-task does not take a file input for the TD, we must pass the overrides JSON
+          # BUT, we still cannot use the 'image' override.
+          #
+          # THE CORRECT SOLUTION IS TO USE THE ORIGINAL TASK DEFINITION AND **OVERRIDE THE IMAGE AT THE SERVICE LEVEL LATER**.
+          # FOR MIGRATION, WE MUST ENSURE THE IMAGE FIELD IN THE *TEMPORARY* JSON IS CORRECT.
+          
+          # Since the image cannot be overridden in run-task, we must:
+          # a) Create a new TD revision with the correct image (temporary registration).
+          # b) Run the task using that new TD.
+          # c) Deregister it (optional, but clean).
+          
+          # --- Re-Registering is the only safe way to run with a new image URI ---
+          
+          # 3. TEMPORARILY REGISTER NEW TASK DEFINITION
+          MIGRATION_TASK_ARN=$(aws ecs register-task-definition \
+            --cli-input-json "$(cat $MIGRATION_TASK_DEF_FILE)" \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+            
+          echo "Registered temporary Task Definition: $MIGRATION_TASK_ARN"
+
+          # 4. LAUNCH MIGRATION TASK with the *full, temporary* Task Definition ARN
           MIGRATION_TASK_ARN=$(aws ecs run-task \
             --cluster "$ECS_CLUSTER" \
-            --task-definition "$TASK_FAMILY" \
+            --task-definition "$MIGRATION_TASK_ARN" \
             --launch-type FARGATE \
-            --overrides "$OVERRIDE_JSON" \
             --network-configuration "awsvpcConfiguration={subnets=[$PRIVATE_SUBNET],securityGroups=[$FARGATE_SG],assignPublicIp=DISABLED}" \
             --query 'tasks[0].taskArn' \
             --output text)
 
           echo "Launched migration task: $MIGRATION_TASK_ARN"
 
-          # 3. WAIT AND CHECK
+          # 5. WAIT AND CHECK (Exit code logic remains the same)
           aws ecs wait tasks-stopped \
             --cluster "$ECS_CLUSTER" \
             --tasks "$MIGRATION_TASK_ARN"
@@ -106,11 +137,18 @@ jobs:
 
           if [ "$EXIT_CODE" != "0" ]; then
             echo "::error::Database migration failed (Exit Code: $EXIT_CODE). Check task logs."
+            # Optionally, add a command to deregister the temporary TD on failure
             exit 1
           fi
           
           echo "Database migration complete."
-
+          
+          # 6. CLEANUP (Deregister the temporary task definition)
+          TASK_DEF_NAME=$(echo "$MIGRATION_TASK_ARN" | awk -F'/' '{print $2}' | awk -F':' '{print $1}')
+          TASK_DEF_REVISION=$(echo "$MIGRATION_TASK_ARN" | awk -F'/' '{print $2}' | awk -F':' '{print $2}')
+          aws ecs deregister-task-definition --task-definition "$TASK_DEF_NAME:$TASK_DEF_REVISION"
+          echo "Deregistered temporary Task Definition $MIGRATION_TASK_ARN"
+          
       # --- 5. Download and Render Task Definition ---
       - name: Download and Render Task Definition 
         uses: aws-actions/amazon-ecs-render-task-definition@v1 
