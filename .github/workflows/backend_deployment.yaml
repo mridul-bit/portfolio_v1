@@ -50,8 +50,8 @@ jobs:
           
       # =========================================================
       # --- 4. Run Database Migrations (Guaranteed Logic) ---
-      # This logic correctly registers a temporary Task Definition (TD) 
-      # to ensure both the new image and the migration command run properly.
+      # Fixes the AccessDeniedException by explicitly passing Task Roles 
+      # via the --overrides parameter for the run-task command.
       # =========================================================
       - name: Run Database Migrations (Isolated Task)
         id: migration-task
@@ -61,6 +61,9 @@ jobs:
           PRIVATE_SUBNET: ${{ secrets.PRIVATE_SUBNET_ID }}
           FARGATE_SG: ${{ secrets.FARGATE_SG_ID }}
           NEW_IMAGE_URI: ${{ steps.build-image.outputs.image_uri }}
+          # NEW SECRETS ADDED HERE to pass to the run-task overrides
+          ECS_TASK_ROLE_ARN: ${{ secrets.ECS_TASK_ROLE_ARN }}
+          ECS_EXECUTION_ROLE_ARN: ${{ secrets.ECS_EXECUTION_ROLE_ARN }}
           
         run: |
           CONTAINER_NAME="${{ env.CONTAINER_NAME }}"
@@ -69,6 +72,7 @@ jobs:
           echo "Starting robust migration process via temporary TD registration..."
 
           # 1. DOWNLOAD THE CURRENT TASK DEFINITION
+          # NOTE: The describe-task-definition output contains 'taskRoleArn' and 'executionRoleArn'
           aws ecs describe-task-definition \
             --task-definition "$TASK_FAMILY" \
             --query 'taskDefinition' \
@@ -76,7 +80,6 @@ jobs:
             > temp-task-def-base.json
             
           # 2. CREATE A TEMPORARY JSON BLUEPRINT (Update Image and Command)
-          # 'jq' is used to safely manipulate JSON without shell errors
           jq --arg image "$NEW_IMAGE_URI" \
              --arg name "$CONTAINER_NAME" \
              '
@@ -95,7 +98,6 @@ jobs:
           cat "$MIGRATION_TASK_DEF_FILE"
 
           # 3. TEMPORARILY REGISTER NEW TASK DEFINITION REVISION
-          # This temporary ARN is used only for the migration task
           TEMP_TD_ARN=$(aws ecs register-task-definition \
             --cli-input-json "$(cat $MIGRATION_TASK_DEF_FILE)" \
             --query 'taskDefinition.taskDefinitionArn' \
@@ -103,14 +105,25 @@ jobs:
             
           echo "Registered temporary Task Definition: $TEMP_TD_ARN"
 
-          # 4. LAUNCH MIGRATION TASK
+          # 4. LAUNCH MIGRATION TASK (FIXED: Uses --overrides for roles)
+          
+          # Construct the OVERRIDES JSON payload
+          OVERRIDES_JSON=$(jq -n \
+            --arg task_arn "$ECS_TASK_ROLE_ARN" \
+            --arg exec_arn "$ECS_EXECUTION_ROLE_ARN" \
+            '{
+              overrides: {
+                taskRoleArn: $task_arn,
+                executionRoleArn: $exec_arn
+              }
+            }')
+
           MIGRATION_TASK_ARN=$(aws ecs run-task \
             --cluster "$ECS_CLUSTER" \
             --task-definition "$TEMP_TD_ARN" \
-            --task-role ${{ secrets.ECS_TASK_ROLE_ARN }} \
-            --execution-role ${{ secrets.ECS_EXECUTION_ROLE_ARN }} \
             --launch-type FARGATE \
             --network-configuration "awsvpcConfiguration={subnets=[$PRIVATE_SUBNET],securityGroups=[$FARGATE_SG],assignPublicIp=DISABLED}" \
+            --overrides "$OVERRIDES_JSON" \
             --query 'tasks[0].taskArn' \
             --output text)
 
@@ -130,7 +143,6 @@ jobs:
           # 6. FAIL PIPELINE IF MIGRATION FAILS
           if [ "$EXIT_CODE" != "0" ]; then
             echo "::error::Database migration failed (Exit Code: $EXIT_CODE). Check task logs for task $MIGRATION_TASK_ARN."
-            # Attempt to deregister the temporary TD on failure (using || true to prevent cleanup failure from stopping the error output)
             aws ecs deregister-task-definition --task-definition "$TEMP_TD_ARN" || true 
             exit 1
           fi
@@ -142,6 +154,7 @@ jobs:
           echo "Deregistered temporary Task Definition $TEMP_TD_ARN"
           
       # --- 5. Download and Render Task Definition (For Service Update) ---
+      # This uses aws-actions/amazon-ecs-render-task-definition to update the main TD
       - name: Download and Render Task Definition 
         uses: aws-actions/amazon-ecs-render-task-definition@v1 
         id: render-task-def
@@ -167,8 +180,8 @@ jobs:
             
           echo "task_def_arn=$NEW_ARN" >> $GITHUB_OUTPUT
 
-      # --- 7. Update ECS Service and Wait for Rollout ---
-      - name: Update ECS Service and Wait for Rollout ✨
+      # --- 7. Update ECS Service and Wait for Rollout ✨ ---
+      - name: Update ECS Service and Wait for Rollout 
         run: |
           NEW_TASK_ARN=${{ steps.register-task-def.outputs.task_def_arn }}
           
