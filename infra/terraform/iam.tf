@@ -130,7 +130,8 @@ resource "aws_iam_policy" "cicd_deploy_policy" {
           "ecr:BatchGetImage",
           "ecr:GetRepositoryPolicy",
           "ecr:ListImages",
-          "ecr:DescribeImages"
+          "ecr:DescribeImages",
+          "ecr:InitiateLayerUpload" 
         ],
         Resource = "*"
       },
