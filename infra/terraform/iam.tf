@@ -175,8 +175,11 @@ resource "aws_iam_policy" "cicd_deploy_policy" {
         "Effect": "Allow",
         "Action": [
           "ecs:RunTask",
-          "ecs:StopTask",
-          "ecs:DescribeTasks"
+          "ecs:DescribeTasks",
+          "ecs:ListClusters",
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
         ],
         "Resource": [
           aws_ecs_cluster.portfolio_ecs.arn,
@@ -237,6 +240,11 @@ resource "aws_iam_policy" "cicd_deploy_policy" {
           aws_iam_role.django_app_task_role.arn,     // Task Role (Application)
           aws_iam_role.ecs_execution_role.arn      // Execution Role (Fargate)
         ]
+        "Condition": {
+          "StringLike": {
+              "iam:PassedToService": "ecs-tasks.amazonaws.com"
+            }
+        }
       }
     ]
   })
