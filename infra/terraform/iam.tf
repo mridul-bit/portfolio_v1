@@ -250,6 +250,16 @@ resource "aws_iam_policy" "cicd_deploy_policy" {
               "iam:PassedToService": "ecs-tasks.amazonaws.com"
             }
         }
+      },
+      {
+        "Effect": "Allow",
+        "Action": [
+          "ec2:DescribeNetworkInterfaces",
+          "ec2:DescribeSecurityGroups",
+          "ec2:DescribeSubnets",
+          "ec2:DescribeVpcs"
+        ],
+        "Resource": "*" 
       }
     ]
   })
