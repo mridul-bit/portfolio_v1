@@ -17,9 +17,8 @@ RESUME_S3_KEY = os.environ.get('RESUME_S3_KEY')
 RESUME_BUCKET_NAME = os.environ.get('RESUME_BUCKET_NAME')
 EXPIRATION_SECONDS = 60
 
-# print(f"Configured Resume S3 Key: {RESUME_S3_KEY}")
-# print(f"Configured Resume Bucket Name: {RESUME_BUCKET_NAME}")
-# print(f"Configured Presigned URL Expiration (seconds): {EXPIRATION_SECONDS}")
+# zzzz
+print(f"Resume S3 Key: {RESUME_S3_KEY}, Bucket: {RESUME_BUCKET_NAME}, Expiration: {EXPIRATION_SECONDS}s")
 @api_view(['GET'])
 def liveness_probe(request):
     

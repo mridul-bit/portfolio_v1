@@ -202,6 +202,13 @@ resource "aws_iam_policy" "cicd_deploy_policy" {
           "StringEquals" = {
             "iam:PassedToService" = "ecs-tasks.amazonaws.com"
           }
+          "StringLike" : {
+            "ecs:task-definition": [
+              aws_ecs_task_definition.django_monolith_task.family,
+              // The temporary task definition family being created
+              "${aws_ecs_task_definition.django_monolith_task.family}*"
+            ]
+          }
         }
       },
       # 5. EC2 Networking Describe (Non-Obvious Fargate Dependency)
@@ -215,6 +222,20 @@ resource "aws_iam_policy" "cicd_deploy_policy" {
           "ec2:DescribeVpcs"
         ],
         Resource = "*"
+      },
+      {
+        "Effect": "Allow",
+        "Action": [
+          "ec2:AuthorizeSecurityGroupIngress",
+          "ec2:AuthorizeSecurityGroupEgress"
+        ],
+        "Resource": [
+          // This must be the ARN of the Security Group used by RunTask
+          // You must update this with the actual Security Group ARN!
+          aws_security_group.fargate_tasks.arn,
+          // And the ARN of the Subnets used by RunTask
+          "arn:aws:ec2:${var.aws_region}:${var.aws_account_id}:subnet/*"
+        ]
       },
       # 6. CloudWatch Logs (To view migration task output)
       {
