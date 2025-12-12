@@ -131,7 +131,9 @@ resource "aws_iam_policy" "cicd_deploy_policy" {
         Action   = [
           "ecs:DescribeServices",
           "ecs:DescribeTaskDefinition", # This action requires specific scoping or '*'
-          "ecs:DescribeTasks"
+          "ecs:DescribeTasks",
+          "ecs:RegisterTaskDefinition",
+          "ecs:DeregisterTaskDefinition"
         ],
         Resource = "*" 
       },
@@ -160,8 +162,7 @@ resource "aws_iam_policy" "cicd_deploy_policy" {
         Action   = [
           "ecs:UpdateService",
           "ecs:DescribeServices",
-          "ecs:RegisterTaskDefinition",
-          "ecs:DescribeTaskDefinition",
+          
           "ecs:RunTask",      # For running the migration task
           "ecs:StopTask",     # To clean up or stop a hanging task
           "ecs:DescribeTasks"
