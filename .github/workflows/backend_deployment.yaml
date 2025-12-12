@@ -88,7 +88,7 @@ jobs:
                 . 
               end) | 
               # Remove read-only fields for registration (CRITICAL STEP)
-              del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .placementConstraints, .compatibilities)
+              del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .placementConstraints, .compatibilities, .registeredAt, .registeredBy)
              ' temp-task-def-base.json > "$MIGRATION_TASK_DEF_FILE"
              
           echo "Generated temporary Task Definition for migration:"
