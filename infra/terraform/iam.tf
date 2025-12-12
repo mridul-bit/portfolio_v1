@@ -179,6 +179,7 @@ resource "aws_iam_policy" "cicd_deploy_policy" {
           "ecs:DescribeTasks"
         ],
         "Resource": [
+          aws_ecs_cluster.portfolio_ecs.arn,
           aws_ecs_cluster.portfolio_ecs.arn, # Resource for RunTask MUST be the Cluster ARN
           "arn:aws:ecs:${var.aws_region}:${var.aws_account_id}:task/*" 
         ],
