@@ -8,7 +8,7 @@ on:
       - 'frontend/**' 
 
 env:
-  AWS_REGION: ${{ secrets.AWS_REGION }} 
+  
   FRONTEND_DIR: frontend
 
 jobs:
@@ -29,7 +29,7 @@ jobs:
       uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ secrets.GH_ACTIONS_DEPLOY_ROLE_ARN }}
-        aws-region: ${{ env.AWS_REGION }}
+        aws-region: ${{ secrets.AWS_REGION }} 
 
     - name: Setup Node.js
       uses: actions/setup-node@v4
@@ -37,6 +37,8 @@ jobs:
         node-version: '20'
 
     - name: Install dependencies and build React App
+      env:
+        API_URL: ${{ secrets.BACKEND_API_BASE_URL }}
       run: |
         cd ${{ env.FRONTEND_DIR }}
         npm install

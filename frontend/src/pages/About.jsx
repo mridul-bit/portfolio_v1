@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 
 //random commendt to check cicd
-
+const API_URL = process.env.API_URL;
 const handleResumeDownload = async () => {
     // 1. Call the Django Backend API
-    const API_URL = "https://api.talkwithmridul.work"; // This endpoint is on the Django Monolith
+    
     console.log("about page");
     try {
         const response = await fetch(API_URL, {
@@ -97,7 +97,7 @@ useEffect(() => {
 
 
   // Placeholder URL for your resume (will point to S3/CloudFront)
-  const resumeUrl = "https://cdn.yourdomain.com/my-resume.pdf"; 
+  const resumeUrl = `${API_URL}/api/resume/`
   // Placeholder URL for your YouTube video
   const videoUrl = "https://www.youtube.com/embed"; 
   

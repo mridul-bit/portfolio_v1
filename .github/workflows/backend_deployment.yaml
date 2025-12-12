@@ -91,18 +91,34 @@ jobs:
           container-name: ${{ env.CONTAINER_NAME }}
           image: ${{ steps.build-image.outputs.image_uri }}
 
-      - name: Register New Task Definition
+      - name: Register new Task Definition 
         id: register-task-def
-        uses: aws-actions/amazon-ecs-register-task-definition@v1
-        with:
-         
-          task-definition: ${{ steps.render-task-def.outputs.task-definition }}
-        
-
-      - name: Register and Deploy to ECS Service ✨
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v1 # The repository name often used for all ECS deployment logic
-        with:
-          task-definition: ${{ steps.render-task-def.outputs.task-definition }}
-          service: ${{ secrets.ECS_SERVICE_NAME }}
-          cluster: ${{ secrets.ECS_CLUSTER_NAME }}
+        run: |
+          # Use jq to clean the rendered task definition (necessary when using CLI)
+          NEW_TASK_DEF=$(cat ${{ steps.render-task-def.outputs.task-definition }} | jq 'del(.compatibilities, .taskDefinitionArn, .revision, .status, .requiresAttributes, .placementConstraints)')
           
+          NEW_ARN=$(aws ecs register-task-definition \
+            --cli-input-json "$NEW_TASK_DEF" \
+            --region ${{ env.AWS_REGION }} \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+            
+          echo "task_def_arn=$NEW_ARN" >> $GITHUB_OUTPUT
+
+      - name: Update ECS Service and Wait for Rollout 
+        run: |
+          NEW_TASK_ARN=${{ steps.register-task-def.outputs.task_def_arn }}
+          
+          # Update the service with the new Task ARN and force a new rollout
+          aws ecs update-service \
+            --cluster ${{ secrets.ECS_CLUSTER_NAME }} \
+            --service ${{ secrets.ECS_SERVICE_NAME }} \
+            --task-definition $NEW_TASK_ARN \
+            --force-new-deployment
+            
+          # Wait for the rolling update to complete
+          aws ecs wait services-stable \
+            --cluster ${{ secrets.ECS_CLUSTER_NAME }} \
+            --services ${{ secrets.ECS_SERVICE_NAME }}
+          
+          echo "Fargate Service successfully rolled out to $NEW_TASK_ARN."
