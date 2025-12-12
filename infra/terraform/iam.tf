@@ -120,102 +120,124 @@ resource "aws_iam_policy" "cicd_deploy_policy" {
   policy = jsonencode({
     Version = "2012-10-17",
     Statement = [
-      # ECR: Push the new Docker image
+      # 1. ECR: Get Authorization Token (Resource MUST be "*")
+      # This is the industry standard practice. The GetAuthorizationToken API call
+      # does not support resource-level permissions (ARNs) and must use *.
       {
-        Effect  = "Allow",
-        Action  = "ecr:GetAuthorizationToken",
-        Resource = "*" 
-      },
-      {
-        Effect   = "Allow",
-        Action   = [
-          "ecs:DescribeServices",
-          "ecs:DescribeTaskDefinition", # This action requires specific scoping or '*'
-          "ecs:DescribeTasks",
-          "ecs:RegisterTaskDefinition",
-          "ecs:DeregisterTaskDefinition"
+        "Effect": "Allow",
+        "Action": [
+          "ecr:GetAuthorizationToken"
         ],
-        Resource = "*" 
+        "Resource": "*" 
       },
+      # 2. ECR: Image Push and Management (Scoped to Repo ARN)
+      # BatchGetImage and GetDownloadUrlForLayer moved here as they relate to the repo.
       {
-        Effect   = "Allow",
-        Action   = [
-          
-          "ecr:BatchCheckLayerAvailability",
+        "Effect": "Allow",
+        "Action": [
+          "ecr:BatchGetImage",
           "ecr:GetDownloadUrlForLayer",
           "ecr:GetRepositoryPolicy",
           "ecr:DescribeRepositories",
           "ecr:ListImages",
           "ecr:DescribeImages",
-          "ecr:BatchGetImage",
+          "ecr:BatchCheckLayerAvailability",
           "ecr:InitiateLayerUpload",
           "ecr:UploadLayerPart",
           "ecr:CompleteLayerUpload",
-          "ecr:PutImage",
-
+          "ecr:PutImage"
         ],
-        Resource = aws_ecr_repository.django_repo.arn
+        "Resource": aws_ecr_repository.django_repo.arn
       },
-      # ECS: Update the service with the new task definition
+      # 3. ECS: Task Definition Management (Register/Deregister)
+      # Replaced Resource = "*" with scoped ARNs for security and robustness.
       {
-        Effect   = "Allow",
-        Action   = [
-          "ecs:UpdateService",
-          "ecs:DescribeServices",
-          
-          "ecs:RunTask",      # For running the migration task
-          "ecs:StopTask",     # To clean up or stop a hanging task
-          "ecs:DescribeTasks"
+        "Effect": "Allow",
+        "Action": [
+          "ecs:DescribeTaskDefinition",
+          "ecs:RegisterTaskDefinition",
+          "ecs:DeregisterTaskDefinition"
         ],
-        Resource = [
-          aws_ecs_cluster.portfolio_ecs.arn,
-          aws_ecs_service.django_service.id,
-          aws_ecs_task_definition.django_monolith_task.arn, # Assuming you have a resource named this
-          "${aws_ecs_task_definition.django_monolith_task.arn}:*"
+        "Resource": [
+          "${aws_ecs_task_definition.django_monolith_task.arn}",
+          "${aws_ecs_task_definition.django_monolith_task.arn}:*" # Scope to the family
         ]
       },
-      # S3: Sync frontend assets
+      # 4. ECS: Service Update Actions (Used for the final service rollout)
       {
-        Effect   = "Allow",
-        Action   = [
+        "Effect": "Allow",
+        "Action": [
+          "ecs:UpdateService",
+          "ecs:DescribeServices"
+        ],
+        "Resource": "arn:aws:ecs:${var.aws_region}:${var.aws_account_id}:service/${aws_ecs_cluster.portfolio_ecs.name}/${aws_ecs_service.django_service.name}"
+      },
+      # 5. ECS: Run Migration Task (FIXES RunTask ACCESS DENIED)
+      # Separated RunTask to apply specific Cluster ARN resource and Conditions.
+      {
+        "Effect": "Allow",
+        "Action": [
+          "ecs:RunTask",
+          "ecs:StopTask",
+          "ecs:DescribeTasks"
+        ],
+        "Resource": [
+          aws_ecs_cluster.portfolio_ecs.arn, # Resource for RunTask MUST be the Cluster ARN
+          "arn:aws:ecs:${var.aws_region}:${var.aws_account_id}:task/*" 
+        ],
+        "Condition": {
+          "ArnEquals": {
+            "ecs:cluster": aws_ecs_cluster.portfolio_ecs.arn
+          },
+          "StringEquals": {
+            "ecs:task-definition": aws_ecs_task_definition.django_monolith_task.family # Binds it to the TD Family
+          }
+        }
+      },
+      # 6. S3: Sync frontend assets
+      {
+        "Effect": "Allow",
+        "Action": [
           "s3:PutObject",
           "s3:GetObject",
           "s3:DeleteObject",
           "s3:ListBucket",
           "s3:PutObjectAcl"
         ],
-        Resource = [
+        "Resource": [
           aws_s3_bucket.frontend_bucket.arn,
           "${aws_s3_bucket.frontend_bucket.arn}/*",
           aws_s3_bucket.resume_bucket.arn,
           "${aws_s3_bucket.resume_bucket.arn}/*"
         ]
       },
-      
-      # CloudFront: Invalidate the cache after frontend deployment
+      # 7. CloudFront: Invalidate the cache after frontend deployment
       {
-        Effect   = "Allow",
-        Action   = [
+        "Effect": "Allow",
+        "Action": [
           "cloudfront:CreateInvalidation"
         ],
-        Resource = aws_cloudfront_distribution.portfolio_cdn.arn
+        "Resource": aws_cloudfront_distribution.portfolio_cdn.arn
       },
+      # 8. Logs: Allow writing to log groups
       {
-        Effect: "Allow",
-        Action: [
+        "Effect": "Allow",
+        "Action": [
           "logs:CreateLogStream",
           "logs:PutLogEvents"
         ],
-        Resource: aws_cloudwatch_log_group.django_log_group.arn
+        "Resource": aws_cloudwatch_log_group.django_log_group.arn
       },
+      # 9. IAM: Pass Role (CRITICAL)
+      # Allows the GitHub Actions role to pass the Execution and Task roles to the ECS service/task.
       {
-        Effect = "Allow",
-        Action = [
-            "iam:PassRole"
+        "Effect": "Allow",
+        "Action": [
+          "iam:PassRole"
         ],
-        Resource = [
-            aws_iam_role.django_app_task_role.arn,     // Task Role (Application)
-            aws_iam_role.ecs_execution_role.arn        // Execution Role (Fargate)
+        "Resource": [
+          aws_iam_role.django_app_task_role.arn,     // Task Role (Application)
+          aws_iam_role.ecs_execution_role.arn      // Execution Role (Fargate)
         ]
       }
     ]
