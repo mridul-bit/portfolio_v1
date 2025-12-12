@@ -129,6 +129,15 @@ resource "aws_iam_policy" "cicd_deploy_policy" {
       {
         Effect   = "Allow",
         Action   = [
+          "ecs:DescribeServices",
+          "ecs:DescribeTaskDefinition", # This action requires specific scoping or '*'
+          "ecs:DescribeTasks"
+        ],
+        Resource = "*" 
+      },
+      {
+        Effect   = "Allow",
+        Action   = [
           
           "ecr:BatchCheckLayerAvailability",
           "ecr:GetDownloadUrlForLayer",
@@ -140,7 +149,8 @@ resource "aws_iam_policy" "cicd_deploy_policy" {
           "ecr:InitiateLayerUpload",
           "ecr:UploadLayerPart",
           "ecr:CompleteLayerUpload",
-          "ecr:PutImage"
+          "ecr:PutImage",
+
         ],
         Resource = aws_ecr_repository.django_repo.arn
       },
@@ -158,7 +168,9 @@ resource "aws_iam_policy" "cicd_deploy_policy" {
         ],
         Resource = [
           aws_ecs_cluster.portfolio_ecs.arn,
-          aws_ecs_service.django_service.id
+          aws_ecs_service.django_service.id,
+          aws_ecs_task_definition.django_monolith_task.arn, # Assuming you have a resource named this
+          "${aws_ecs_task_definition.django_monolith_task.arn}:*"
         ]
       },
       # S3: Sync frontend assets
