@@ -49,22 +49,23 @@ jobs:
           
       - name: Run Database Migrations (Isolated Task) 💾
         run: |
-          # 1. Capture the image URI directly (no need for a separate shell variable line)
-          # The entire run-task command will output the Task ARN.
+          NEW_IMAGE_URI=${{ steps.build-image.outputs.image_uri }}
+          CONTAINER_NAME=${{ env.CONTAINER_NAME }}
+          
+          # Construct the full override string first using a shell variable
+          OVERRIDE_STRING="name=$CONTAINER_NAME,image=$NEW_IMAGE_URI,command=[\"python\", \"manage.py\", \"migrate\", \"--noinput\"]"
+
+          # 1. Launch migration task
           MIGRATION_TASK_ARN=$(aws ecs run-task \
             --cluster ${{ secrets.ECS_CLUSTER_NAME }} \
             --task-definition ${{ secrets.ECS_TASK_DEFINITION_FAMILY }} \
             --launch-type FARGATE \
-            --override-container 'name=${{ env.CONTAINER_NAME }},image=${{ steps.build-image.outputs.image_uri }},command=["python", "manage.py", "migrate", "--noinput"]' \
+            --override-container "$OVERRIDE_STRING" \
             --network-configuration "awsvpcConfiguration={subnets=[${{ secrets.PRIVATE_SUBNET_ID }}],securityGroups=[${{ secrets.FARGATE_SG_ID }}],assignPublicIp=DISABLED}" \
             --query 'tasks[0].taskArn' \
             --output text)
 
           echo "Launched migration task: $MIGRATION_TASK_ARN"
-
-          # 2. Wait explicitly for the launched task ARN to stop.
-          # If the task exits with a non-zero code (i.e., migration failed), 
-          # this 'wait' command will fail the entire step.
           aws ecs wait tasks-stopped \
             --cluster ${{ secrets.ECS_CLUSTER_NAME }} \
             --tasks $MIGRATION_TASK_ARN
